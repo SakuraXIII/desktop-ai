@@ -1,0 +1,21 @@
+[workspace]
+authors = ["SakuHx <1162617171@qq.com >"]
+channels = ["conda-forge", "pytorch", "MindSpore"]
+name = "desktop-ai"
+platforms = ["win-64"]
+version = "0.1.0"
+
+[pypi-options]
+index-url = "https://mirrors.aliyun.com/pypi/simple/"
+extra-index-urls = ["https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple", "https://pypi.mirrors.ustc.edu.cn/pypi/simple/"]
+
+[tasks]
+
+[dependencies]
+python = "3.11.*"
+
+[pypi-dependencies]
+langchain = ">=1.2.10, <2"
+langchain-openai = ">=1.1.10, <2"
+loguru = ">=0.7.3, <0.8"
+python-dotenv = ">=1.2.1, <2"
