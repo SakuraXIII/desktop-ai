@@ -5,16 +5,54 @@
 # @File    : main.py
 import importlib
 import os
+import re
 from pathlib import Path
 
+import httpx
 from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langchain.messages import SystemMessage, HumanMessage
+from loguru import logger
 
 # ------------------------------------------------ #
 
 load_dotenv()
+
+
+class SkillLoader:
+    def __init__(self, skills_dir: str):
+        self.skills = {}
+        for f in sorted(Path(skills_dir).rglob("SKILL.md")):
+            text = f.read_text()
+            meta, body = self._parse_frontmatter(text)
+            name = meta.get("name", f.parent.name)
+            self.skills[name] = {"meta": meta, "body": body}
+    
+    def get_descriptions(self) -> str:
+        lines = []
+        for name, skill in self.skills.items():
+            desc = skill["meta"].get("description", "")
+            lines.append(f"  - {name}: {desc}")
+        return "\n".join(lines)
+    
+    def get_content(self, name: str) -> str:
+        skill = self.skills.get(name)
+        if not skill:
+            return f"Error: Unknown skill '{name}'."
+        return f"<skill name=\"{name}\">\n{skill['body']}\n</skill>"
+    
+    def _parse_frontmatter(self, text: str) -> tuple:
+        """Parse YAML frontmatter between --- delimiters."""
+        match = re.match(r"^---\n(.*?)\n---\n(.*)", text, re.DOTALL)
+        if not match:
+            return {}, text
+        meta = {}
+        for line in match.group(1).strip().splitlines():
+            if ":" in line:
+                key, val = line.split(":", 1)
+                meta[key.strip()] = val.strip()
+        return meta, match.group(2).strip()
 
 
 class ChatAI:
@@ -43,8 +81,10 @@ class AgentAI(ChatAI):
             max_tokens=1024, max_retries=3
     ):
         super().__init__(model_name, provider, base_url, key, temperature, timeout, max_tokens, max_retries)
-        self.tool_root_dir = ""
+        self.tool_root_dir = "tools"
+        self.skill_root_dir = 'skills'
         self._tools = self._load_tools_from_dir()
+        self.skills = SkillLoader(self.skill_root_dir)
         self.agent = create_agent(self.model, tools=self._tools)
     
     def _load_tools_from_dir(self):
@@ -69,7 +109,7 @@ class AgentAI(ChatAI):
             
             # 动态加载执行器模块
             try:
-                module = importlib.import_module(tool_module.__str__())
+                module = importlib.import_module(f".{tool_module.name}", package=root_path.stem)
                 tools.extend(module.tools or [])
                 logger.debug([tool.name for tool in module.tools])
             
@@ -78,6 +118,15 @@ class AgentAI(ChatAI):
                 continue
         
         return tools
+    
+    def chat(self, question, stream=False):
+        conversation = HumanMessage(question)
+        
+        if stream:
+            return self.agent.stream(conversation)
+        else:
+            res = self.agent.invoke({"messages": [{"role": "user", "content": f"{question}"}]})
+            return res
 
 
 if __name__ == '__main__':
